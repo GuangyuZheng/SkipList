@@ -1,235 +1,170 @@
-#include <stdio.h>
-#include <stdlib.h>
+#include <stdlib.h> 
+#include <stdio.h> 
 #include <time.h>
-#include <string.h>
+#include <limits.h>
 
-#define SKIP_LIST_INIT_LEVEL  5
+#ifndef __SKIPLIST_H 
+#define __SKIPLIST_H 
 
-struct list_node_s;
-struct list_s;
-typedef struct list_node_s list_node_t;
-typedef struct list_s list_t;
+#define SKIPLIST_MAXLEVEL 8    
 
-struct list_node_s {
-	int key;
-	void *value;
-	int high;
-	struct list_node_s **forward;
-};
+typedef struct skiplistNode { 
+    double score; 
+    struct skiplistLevel { 
+        struct skiplistNode *forward; 
+    }level[]; 
+}skiplistNode; 
 
-struct list_s {
-	int level;
-	struct list_node_s *header;
-};
+typedef struct skiplist { 
+    struct skiplistNode *header; 
+    int level; 
+}skiplist; 
 
+#endif
 
-int random_level();
-list_t *new_list(int init_level);
-list_node_t *new_list_node(int high);
-void *find(list_t *l, int key);
-void insert(list_t *l, int key, void *value);
-void *delete_node(list_t *l, int key);
-void destroy(list_t *l);
+skiplistNode *slCreateNode(int level, double score) { 
+    skiplistNode * sn = malloc(sizeof(*sn) + level*sizeof(struct skiplistLevel)); 
+    sn->score = score; 
+    return sn; 
+} 
 
-int random_level()
-{
-	int k = 0;
-//	srand(time(NULL));
-	while (rand() % 2) {
-		k++;
-	}
+skiplist *slCreate(void) { 
+    int j; 
+    skiplist *sl; 
 
-	return k;
-}
+    sl = malloc(sizeof(*sl)); 
+    sl->level = 1; 
+    sl->header = slCreateNode(SKIPLIST_MAXLEVEL, 0); 
+    for(j = 0; j < SKIPLIST_MAXLEVEL; j++) { 
+        sl->header->level[j].forward = NULL; 
+    } 
+    return sl; 
+} 
 
-list_t *new_list(int init_level)
-{
-	list_t *l;
-	l = malloc(sizeof(list_t));
-	l->header = new_list_node(init_level);
-	l->level = 0;
-	l->header->key = -1;
-	return l;
-}
+void slFreeNode(skiplistNode *sn) { 
+    free(sn); 
+} 
 
-list_node_t *new_list_node(int high)
-{
-	int i;
-	list_node_t *n;
-	n = malloc(sizeof(list_node_t));
-	n->forward = malloc(high *sizeof(void *));
-	n->high = high;
+void slFree(skiplist *sl) { 
+    skiplistNode *node = sl->header->level[0].forward, *next; 
 
-	for (i = 0; i < high; i++) {
-		n->forward[i] = NULL;
-	}
+    free(sl->header); 
+    while(node) { 
+        next = node->level[0].forward; 
+        slFreeNode(node); 
+        node = next; 
+    } 
+    free(sl); 
+} 
 
-	return n;
-}
+int slRandomLevel(void) { 
+    int level = 1; 
+    while(rand()%2)
+        level += 1; 
+    return (level < SKIPLIST_MAXLEVEL) ? level : SKIPLIST_MAXLEVEL; 
+} 
 
-void destroy(list_t *l)
-{
-	list_node_t *n, *next;
-	n = l->header;
-	while (n) {
-		next = n->forward[0];
-		free(n->forward);
-		free(n);
-		n = next;
-	}
-	free(l);
-}
+int slSearch(skiplist *sl, double score) { 
+    skiplistNode *node; 
+    int i; 
 
-void *find(list_t *l, int key)
-{
-	int k = l->level;
-	list_node_t *n = l->header;
+    node = sl->header; 
+    for (i = sl->level-1; i >= 0 ;i--) { 
+        while(node->level[i].forward && node->level[i].forward->score < score) { 
+            node = node->level[i].forward; 
+        } 
+    } 
+    node = node->level[0].forward; 
+    if (node && score == node->score) { 
+        printf("Found %d\n",(int)node->score); 
+        return 1; 
+    } else { 
+        printf("Not found %d\n", (int)score); 
+        return 0; 
+    } 
+} 
 
-	while (n && k >= 0) {
-		while(n->forward[k] && n->forward[k]->key <= key) {
-			n = n->forward[k];
-		}
+skiplistNode *slInsert(skiplist *sl, double score) { 
+    //if(slSearch(sl,score))
+    //{
+    //    printf("duplicate score\n");
+    //    return NULL;
+    //}
+    skiplistNode *update[SKIPLIST_MAXLEVEL]; 
+    skiplistNode *node; 
 
-		if (n->key == key) {
-			return n->value;
-		}
-		k--;
-	}
+    node = sl->header; 
+    int i, level; 
+    for ( i = sl->level-1; i >= 0; i--) { 
+        while(node->level[i].forward && node->level[i].forward->score < score) { 
+            node = node->level[i].forward; 
+        } 
+        if (node->level[i].forward && node->level[i].forward->score == score) {
+            printf("duplicate\n");
+            return NULL;
+        }
+        update[i] = node; 
+    } 
+    level = slRandomLevel(); 
+    if (level > sl->level) { 
+        for (i = sl->level; i< level ;i++) { 
+            update[i] = sl->header; 
+        } 
+        sl->level = level; 
+    } 
+    node = slCreateNode(level, score); 
+    for (i = 0; i < level; i++) { 
+        node->level[i].forward = update[i]->level[i].forward; 
+        update[i]->level[i].forward = node; 
+    } 
 
-	return NULL;
-}
+    return node; 
+} 
 
-void insert(list_t *l, int key, void *value)
-{
-	int insert_level;
-	int k;
-	size_t size;
-	list_node_t *p, *q, *n;
-	list_node_t **update;
+void slDeleteNode(skiplist *sl, skiplistNode *x, skiplistNode **update){ 
+    int i; 
+    for (i = 0; i < sl->level; i++) { 
+        if (update[i]->level[i].forward == x) { 
+            update[i]->level[i].forward = x->level[i].forward; 
+        } 
+    } 
+    while (sl->level > 1 && sl->header->level[sl->level-1].forward == NULL)    
+        sl->level--; 
+} 
 
-	k = l->level;
-	size = sizeof(void *) * (k + 1);
-	update = malloc(size);
-	p = q = l->header;
+int slDelete(skiplist *sl, double score) { 
+    skiplistNode *update[SKIPLIST_MAXLEVEL], *node; 
+    int i; 
 
-	while (q && k >= 0) {
-		while (q->key < key) {
-			p = q;
-			if (q->forward[k]) {
-				q = q->forward[k];
-			}
-			else {
-				break;
-			}
-		}
-		q = update[k] = p;
-		//	printf("level:%d->%d ",k, p->key);
-		k--;
-	}
+    node = sl->header; 
+    for(i = sl->level-1; i >= 0; i--) { 
+        while (node->level[i].forward && node->level[i].forward->score < score) { 
+            node = node->level[i].forward; 
+        } 
+        update[i] = node; 
+    } 
+    node = node->level[0].forward; 
+    if (node && score == node->score) { 
+        slDeleteNode(sl, node, update); 
+        slFreeNode(node); 
+        return 1; 
+    } else { 
+        return 0; 
+    } 
+    return 0; 
+} 
 
-	insert_level = random_level();
-	if (insert_level > l->level ) {
+void slPrint(skiplist *sl) { 
+    skiplistNode *node; 
+    int i; 
+    for (i = 0; i < SKIPLIST_MAXLEVEL; i++) { 
+        printf("LEVEL[%d]: ", i); 
+        node = sl->header->level[i].forward; 
+        while(node) { 
+            printf("%d -> ", (int)(node->score)); 
+            node = node->level[i].forward; 
+        } 
+        printf("NULL\n"); 
+    } 
+} 
 
-		k = l->level++;
-		insert_level = l->level;
-		n = new_list_node(insert_level + 1);
-		n->key = key;
-		n->value = value;
-		if (insert_level >= l->header->high) {
-			list_node_t **l1, **l2;
-			l1 = malloc(sizeof(void *) * (insert_level + 1));
-			l2 = l->header->forward;
-			memcpy(l1, l2, sizeof(void *) * insert_level);
-			l1[insert_level] = NULL;
-			l->header->forward = l1;
-			free(l2);
-			l->header->high++;
-			l->header->forward[insert_level] = n;
-		}
-		else {
-			l->header->forward[insert_level] = n;
-		}
-
-	}
-	else {
-		k = insert_level;
-		n = new_list_node(k + 1);
-		n->value = value;
-		n->key = key;
-	}
-//	printf("key: %d update: ", key);
-
-	while (k >= 0) {
-		p = update[k];
-//		printf("%d ", p->key);
-		q = p->forward[k];
-		p->forward[k] = n;
-		n->forward[k] = q;
-		k--;
-	}
-//	printf("\n");
-	free(update);
-}
-
-void *delete(list_t *l, int key)
-{
-	int k = l->level;
-	list_node_t *p, *q, *n;
-	p = q = l->header;
-	n = NULL;
-	list_node_t **update;
-
-	update = malloc(sizeof(void *) * (k + 1));
-
-	while (q && k >= 0) {
-		while (q->key < key) {
-			p = q;
-			if (q->forward[k]) {
-				q = q->forward[k];
-			}
-			else {
-				break;
-			}
-		}
-
-		q = update[k] = p;
-
-		k--;
-	}
-
-	if (update[0]->forward[0] && update[0]->forward[0]->key == key) {
-		n = update[0]->forward[0];
-	}
-	else {
-		free(update);
-		return NULL;
-	}
-
-	k = n->high - 1;
-	while (k >= 0) {
-		p = update[k];
-		p->forward[k] = n->forward[k];
-		k--;
-	}
-
-	free(update);
-	return n->value;
-}
-
-
-
-void show_list(list_t *l)
-{
-	int k = l->level;
-	list_node_t *n;
-	n = l->header;
-	while (k >= 0) {
-		n = l->header;
-		while (n) {
-			printf("%d ", n->key);
-			n = n->forward[k];
-		}
-		printf("\n");
-		k--;
-	}
-}

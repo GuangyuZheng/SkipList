@@ -1,45 +1,39 @@
-#include "SkipList.h"
-#include <stdio.h>
-#include <stdlib.h>
+#include "skiplist.h" 
+#include <stdlib.h> 
+#include <stdio.h> 
+#include <time.h>
 
-int main(int argc, char *argv[])
-{
-	int k, i;
-	list_t *l;
-	void *ptr = &k;
-	l = new_list(10);
-	k = 10;
+int main() { 
+    srand((unsigned)time(0)); 
+    int count = 20, i; 
 
-	srand(time(NULL));
-	i = k;
+    printf("### Function Test ###\n"); 
 
-	printf("---------------\n");
-	while (i > 0) {
-		int key;
-		key = rand() % k;
-		insert(l, key, ptr);
-		//	show_list(l);
-		i--;
-	}
-	i = k ;
-	show_list(l);
-	while (i > 0) {
-		int key;
-		void *p;
-		key = rand() % k;
-		p = find(l, key);
-		if (p == NULL) {
-			printf("key %d not found\n", key);
-		}
-		else {
-			delete(l, key);
-			printf("key %d found\n", key);
-		}
-		i--;
-	}
-	printf("\n--------------\n");
-	show_list(l);
-	destroy(l);
-	return 0;
-}
+    printf("=== Init Skip List ===\n"); 
+    skiplist * sl = slCreate(); 
+    for ( i = 1; i < count; i++) { 
+        slInsert(sl,i); 
+    } 
+    printf("=== Print Skip List ===\n"); 
+    slPrint(sl); 
+    int number;
+    slSearch(sl,0);
+    while(scanf("%d",&number))
+    {
+        slInsert(sl,number);
+        slPrint(sl);
+    }
+    printf("=== Search Skip List ===\n"); 
+    for (i = 0; i < count; i++) { 
+        int value = rand()%(count+10); 
+        slSearch(sl, value); 
+    } 
+    printf("=== Delete Skip List ===\n"); 
+    for (i = 0; i < count+10; i+=2) { 
+        printf("Delete[%d]: %s\n", i, slDelete(sl, i)?"SUCCESS":"NOT FOUND"); 
+    } 
+    slPrint(sl); 
 
+    slFree(sl); 
+    sl = NULL; 
+} 
